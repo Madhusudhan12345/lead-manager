@@ -3,7 +3,7 @@
 A working prototype for the Edumerge Pre-Drive assignment (Assignment 5: Admission Lead Management).
 Manages a lead from first contact to admission, with counsellor assignment, follow-ups, ageing, and a manager dashboard.
 
-**Live demo:** <paste your Render URL here> (seeded with demo data)
+**Live demo:** <https://lead-manager-6cl3.onrender.com> (seeded with demo data)
 
 ## Run locally (Windows CMD)
 ```
