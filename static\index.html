@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Admission Lead Manager</title>
+<style>
+:root{--bg:#f6f7fb;--card:#fff;--ink:#1d2433;--mut:#6b7285;--pri:#3b5bdb;--bad:#e03131;--warn:#f08c00;--ok:#2f9e44;--line:#e5e8f0}
+*{box-sizing:border-box}body{margin:0;font:14px system-ui,Segoe UI,Arial,sans-serif;background:var(--bg);color:var(--ink)}
+header{background:var(--pri);color:#fff;padding:10px 20px;display:flex;gap:14px;align-items:center;flex-wrap:wrap}
+header h1{font-size:17px;margin:0 14px 0 0}
+nav button{background:transparent;border:0;color:#dbe4ff;padding:8px 14px;cursor:pointer;font-size:14px;border-radius:6px}
+nav button.on{background:rgba(255,255,255,.2);color:#fff}
+main{max-width:1150px;margin:18px auto;padding:0 14px}
+.grid{display:grid;gap:12px}.g4{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}.g2{grid-template-columns:repeat(auto-fit,minmax(320px,1fr))}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px}
+.card h3{margin:0 0 10px;font-size:14px}
+.stat b{display:block;font-size:26px}.stat span{color:var(--mut);font-size:12px}
+.bad{color:var(--bad)}.warn{color:var(--warn)}.ok{color:var(--ok)}.mut{color:var(--mut)}
+table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:8px 6px;border-bottom:1px solid var(--line);font-size:13px}
+th{color:var(--mut);font-weight:600;font-size:12px}tr.row{cursor:pointer}tr.row:hover{background:#f1f4ff}
+.pill{display:inline-block;padding:2px 8px;border-radius:99px;font-size:11px;font-weight:600;background:#eef1f8}
+.pill.High{background:#ffe3e3;color:var(--bad)}.pill.Medium{background:#fff1d6;color:var(--warn)}.pill.Low{background:#e6f4ea;color:var(--ok)}
+.bar{display:flex;align-items:center;gap:8px;margin:6px 0}.bar i{display:block;height:16px;background:var(--pri);border-radius:4px;min-width:3px}.bar span{width:130px;font-size:12px}
+input,select,textarea,button{font:inherit}input,select,textarea{padding:7px 9px;border:1px solid var(--line);border-radius:6px;background:#fff;width:100%}
+button.pri{background:var(--pri);color:#fff;border:0;padding:8px 14px;border-radius:6px;cursor:pointer}
+button.sec{background:#eef1f8;border:0;padding:6px 10px;border-radius:6px;cursor:pointer}
+.row2{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;align-items:end}
+label{font-size:12px;color:var(--mut);display:block;margin-bottom:3px}
+.msg{padding:9px 12px;border-radius:6px;margin:10px 0;font-size:13px}.msg.e{background:#ffe3e3;color:#a51111}.msg.o{background:#e6f4ea;color:#1b6b2f}.msg.w{background:#fff1d6;color:#8a5500}
+.modal{position:fixed;inset:0;background:rgba(20,25,40,.5);display:none;justify-content:center;align-items:flex-start;overflow:auto;padding:24px 10px}
+.modal.on{display:flex}.modal .box{background:#fff;border-radius:12px;max-width:760px;width:100%;padding:18px}
+.tl{border-left:2px solid var(--line);margin-left:6px;padding-left:12px}.tl div{margin:0 0 10px;font-size:13px}
+.ai{background:#f1f4ff;border:1px dashed var(--pri);border-radius:8px;padding:10px;margin:10px 0}
+.filters{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin-bottom:10px;align-items:end}
+.scroll{overflow-x:auto}
+</style></head><body>
+<header><h1>Admission Lead Manager</h1>
+<nav><button data-v="dash" class="on">Dashboard</button><button data-v="leads">Leads</button><button data-v="add">Add Lead</button><button data-v="team">Counsellors</button></nav></header>
+<main><div id="view"></div></main>
+<div class="modal" id="modal"><div class="box" id="box"></div></div>
+<script>
+const $=s=>document.querySelector(s);
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+async function api(path,opt={}){
+  const r=await fetch("/api"+path,{headers:{"Content-Type":"application/json"},...opt,body:opt.body?JSON.stringify(opt.body):undefined});
+  const d=await r.json().catch(()=>({}));
+  if(!r.ok)throw new Error(typeof d.detail==="string"?d.detail:JSON.stringify(d.detail||d));
+  return d;
+}
+let META={statuses:[],sources:[]},TEAM=[],VIEW="dash",FILTER={status:"",counsellor_id:"",overdue:false,q:""};
+const today=()=>new Date().toISOString().slice(0,10);
+const fmt=s=>new Date(s).toLocaleString();
+const msg=(t,k="e")=>`<div class="msg ${k}">${esc(t)}</div>`;
+
+document.querySelectorAll("nav button").forEach(b=>b.onclick=()=>{VIEW=b.dataset.v;document.querySelectorAll("nav button").forEach(x=>x.classList.toggle("on",x===b));render()});
+$("#modal").onclick=e=>{if(e.target.id==="modal")$("#modal").classList.remove("on")};
+
+async function render(){
+  TEAM=await api("/counsellors");
+  ({dash:dashboard,leads:leadsView,add:addView,team:teamView})[VIEW]();
+}
+
+async function dashboard(){
+  const d=await api("/dashboard");
+  const max=Math.max(1,...Object.values(d.funnel));
+  $("#view").innerHTML=`
+  <div class="grid g4">
+   <div class="card stat"><b>${d.total}</b><span>Total leads</span></div>
+   <div class="card stat"><b>${d.open}</b><span>Open leads</span></div>
+   <div class="card stat"><b class="bad">${d.overdue}</b><span>Overdue follow-ups</span></div>
+   <div class="card stat"><b class="warn">${d.stale}</b><span>Stale (no contact ${META.stale_days}+ days)</span></div>
+   <div class="card stat"><b class="ok">${d.conversion_pct}%</b><span>Overall conversion (${d.admitted} admitted)</span></div>
+  </div>
+  <div class="grid g2" style="margin-top:12px">
+   <div class="card"><h3>Funnel</h3>${Object.entries(d.funnel).map(([k,v])=>`<div class="bar"><span>${esc(k)}</span><i style="width:${v/max*60}%"></i><b>${v}</b></div>`).join("")}</div>
+   <div class="card"><h3>Conversion by source</h3><table><tr><th>Source</th><th>Leads</th><th>Admitted</th><th>Conv.</th></tr>
+    ${d.by_source.map(s=>`<tr><td>${esc(s.source)}</td><td>${s.total}</td><td>${s.admitted}</td><td>${s.conversion_pct}%</td></tr>`).join("")}</table></div>
+   <div class="card"><h3>Counsellor workload (open leads)</h3><table><tr><th>Counsellor</th><th>Open</th><th>Overdue</th><th>Stale</th></tr>
+    ${d.by_counsellor.map(c=>`<tr><td>${esc(c.counsellor)}</td><td>${c.open}</td><td class="${c.overdue?"bad":""}">${c.overdue}</td><td class="${c.stale?"warn":""}">${c.stale}</td></tr>`).join("")}</table></div>
+   <div class="card"><h3>Why leads are lost</h3>${Object.keys(d.lost_reasons).length?Object.entries(d.lost_reasons).map(([k,v])=>`<div>${esc(k)}: <b>${v}</b></div>`).join(""):'<span class="mut">No lost leads yet</span>'}
+    <p><button class="sec" onclick="goOverdue()">View overdue leads</button></p></div>
+  </div>`;
+}
+function goOverdue(){FILTER={status:"",counsellor_id:"",overdue:true,q:""};VIEW="leads";document.querySelectorAll("nav button").forEach(x=>x.classList.toggle("on",x.dataset.v==="leads"));render()}
+
+async function leadsView(){
+  const p=new URLSearchParams();
+  if(FILTER.status)p.set("status",FILTER.status);
+  if(FILTER.counsellor_id)p.set("counsellor_id",FILTER.counsellor_id);
+  if(FILTER.overdue)p.set("overdue","true");
+  if(FILTER.q)p.set("q",FILTER.q);
+  const leads=await api("/leads?"+p);
+  $("#view").innerHTML=`<div class="card">
+  <div class="filters">
+   <div><label>Search name / phone</label><input id="fq" value="${esc(FILTER.q)}"></div>
+   <div><label>Status</label><select id="fs"><option value="">All</option>${META.statuses.map(s=>`<option ${FILTER.status===s?"selected":""}>${s}</option>`).join("")}</select></div>
+   <div><label>Counsellor</label><select id="fc"><option value="">All</option>${TEAM.map(c=>`<option value="${c.id}" ${FILTER.counsellor_id==c.id?"selected":""}>${esc(c.name)}</option>`).join("")}</select></div>
+   <div><label><input type="checkbox" id="fo" style="width:auto" ${FILTER.overdue?"checked":""}> Overdue only</label></div>
+  </div>
+  <div class="scroll"><table><tr><th>Name</th><th>Course</th><th>Source</th><th>Status</th><th>Counsellor</th><th>Follow-up</th><th>Age</th><th>Priority</th></tr>
+  ${leads.map(l=>`<tr class="row" onclick="openLead(${l.id})"><td><b>${esc(l.name)}</b><br><span class="mut">${esc(l.phone)}</span></td><td>${esc(l.course)}</td><td>${esc(l.source)}</td><td><span class="pill">${esc(l.status)}</span></td><td>${esc(l.counsellor||"-")}</td>
+   <td class="${l.overdue?"bad":""}">${l.next_followup||"-"}${l.overdue?" (overdue)":""}</td><td class="${l.stale?"warn":""}">${l.age_days}d${l.stale?" stale":""}</td><td><span class="pill ${l.score?l.priority:""}">${l.score?l.priority+" "+l.score:"-"}</span></td></tr>`).join("")||'<tr><td colspan="8" class="mut">No leads match</td></tr>'}
+  </table></div></div>`;
+  const upd=()=>{FILTER={q:$("#fq").value,status:$("#fs").value,counsellor_id:$("#fc").value,overdue:$("#fo").checked};leadsView()};
+  $("#fs").onchange=$("#fc").onchange=$("#fo").onchange=upd;
+  $("#fq").onkeydown=e=>{if(e.key==="Enter")upd()};
+}
+
+function addView(){
+  $("#view").innerHTML=`<div class="card"><h3>Capture a new lead</h3><div id="out"></div>
+  <div class="row2">
+   <div><label>Name *</label><input id="n"></div><div><label>Phone *</label><input id="p"></div><div><label>Email</label><input id="e"></div>
+   <div><label>Source *</label><select id="s">${META.sources.map(s=>`<option>${s}</option>`).join("")}</select></div>
+   <div><label>Course preference *</label><input id="c" placeholder="e.g. B.Tech CSE"></div>
+   <div><button class="pri" id="go">Save lead</button></div></div></div>`;
+  $("#go").onclick=async()=>{
+    try{
+      const d=await api("/leads",{method:"POST",body:{name:$("#n").value,phone:$("#p").value,email:$("#e").value,source:$("#s").value,course:$("#c").value}});
+      $("#out").innerHTML=d.duplicate?msg(`Duplicate: this person already exists as lead #${d.id} (${d.name}). The new enquiry was logged on the existing lead instead of creating a second one.`,"w"):msg(`Lead created and assigned to ${d.counsellor||"nobody (add a counsellor first)"}.`,"o");
+      if(!d.duplicate)["n","p","e","c"].forEach(i=>$("#"+i).value="");
+    }catch(e){$("#out").innerHTML=msg(e.message)}
+  };
+}
+
+async function teamView(){
+  $("#view").innerHTML=`<div class="card"><h3>Counsellors</h3><div id="out"></div>
+  <table><tr><th>Name</th><th>Open leads</th><th></th></tr>${TEAM.map(c=>`<tr><td>${esc(c.name)}</td><td>${c.open_leads}</td><td><button class="sec" onclick="rmC(${c.id})">Remove</button></td></tr>`).join("")}</table>
+  <div class="row2" style="margin-top:12px"><div><label>New counsellor name</label><input id="cn"></div><div><button class="pri" id="ac">Add</button></div></div></div>`;
+  $("#ac").onclick=async()=>{try{await api("/counsellors",{method:"POST",body:{name:$("#cn").value}});render()}catch(e){$("#out").innerHTML=msg(e.message)}};
+}
+async function rmC(id){
+  if(!confirm("Remove this counsellor? Their open leads will be redistributed automatically."))return;
+  try{const r=await api("/counsellors/"+id,{method:"DELETE"});await render();$("#out").innerHTML=msg(`${r.removed} removed, ${r.leads_reassigned} open leads reassigned.`,"o")}catch(e){$("#out").innerHTML=msg(e.message)}
+}
+
+async function openLead(id,note=""){
+  const l=await api("/leads/"+id);
+  const others=TEAM.filter(c=>c.id!==l.counsellor_id);
+  $("#box").innerHTML=`
+  <div style="display:flex;justify-content:space-between"><h2 style="margin:0">${esc(l.name)} <span class="pill">${esc(l.status)}</span></h2><button class="sec" onclick="$('#modal').classList.remove('on');render()">Close</button></div>
+  <p class="mut">${esc(l.phone)} | ${esc(l.email||"no email")} | ${esc(l.source)} | ${esc(l.course)}<br>Counsellor: <b>${esc(l.counsellor||"-")}</b> | Next follow-up: <b class="${l.overdue?"bad":""}">${l.next_followup||"-"}</b> | Last contact: ${l.age_days} day(s) ago</p>
+  <div id="mout">${note}</div>
+  <div class="ai"><b>Priority: ${l.score?l.priority+" ("+l.score+"/100)":"Closed"}</b><br><span class="mut">Why: ${esc(l.score_reason)}</span>
+   <p style="margin:8px 0 4px"><b>Suggested follow-up message</b></p><div id="sm">${esc(l.suggested_message)}</div>
+   <button class="sec" style="margin-top:6px" onclick="navigator.clipboard.writeText($('#sm').innerText)">Copy</button></div>
+  ${l.allowed.length?`<div class="card"><h3>Move to next stage</h3><div class="row2">
+   <div><label>New status</label><select id="ns">${l.allowed.map(s=>`<option>${s}</option>`).join("")}</select></div>
+   <div id="fw"><label>Next follow-up *</label><input type="date" id="nf" min="${today()}"></div>
+   <div id="lw" style="display:none"><label>Lost reason *</label><input id="lr"></div>
+   <div><label>Note</label><input id="nn"></div><div><button class="pri" onclick="doStatus(${l.id})">Update</button></div></div></div>`:'<p class="mut">This lead is final (Admitted).</p>'}
+  <div class="card" style="margin-top:10px"><h3>Add note / reschedule</h3><div class="row2"><div><label>Note</label><input id="an"></div><div><label>New follow-up date</label><input type="date" id="af" min="${today()}"></div><div><button class="pri" onclick="doNote(${l.id})">Save</button></div></div></div>
+  ${others.length?`<div class="card" style="margin-top:10px"><h3>Reassign</h3><div class="row2"><div><select id="rc">${others.map(c=>`<option value="${c.id}">${esc(c.name)} (${c.open_leads} open)</option>`).join("")}</select></div><div><button class="sec" onclick="doReassign(${l.id})">Reassign</button></div></div></div>`:""}
+  <h3>Activity timeline</h3><div class="tl">${l.activities.map(a=>`<div><b>${esc(a.kind)}</b> - ${esc(a.note)}<br><span class="mut">${fmt(a.at)}</span></div>`).join("")}</div>`;
+  $("#modal").classList.add("on");
+  const ns=$("#ns");
+  if(ns){ns.onchange=()=>{const lost=ns.value==="Lost",adm=ns.value==="Admitted";$("#lw").style.display=lost?"":"none";$("#fw").style.display=(lost||adm)?"none":""};ns.onchange()}
+}
+async function act(id,fn){try{await fn();openLead(id,msg("Saved.","o"))}catch(e){$("#mout").innerHTML=msg(e.message)}}
+const doStatus=id=>act(id,()=>api(`/leads/${id}/status`,{method:"POST",body:{status:$("#ns").value,next_followup:$("#nf").value||null,lost_reason:$("#lr").value||null,note:$("#nn").value||null}}));
+const doNote=id=>act(id,()=>api(`/leads/${id}/note`,{method:"POST",body:{note:$("#an").value,next_followup:$("#af").value||null}}));
+const doReassign=id=>act(id,()=>api(`/leads/${id}/reassign`,{method:"POST",body:{counsellor_id:+$("#rc").value}}));
+
+(async()=>{META=await api("/meta");render()})();
+</script></body></html>
