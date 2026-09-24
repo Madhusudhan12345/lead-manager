@@ -1,0 +1,6 @@
+fastapi
+uvicorn
+sqlalchemy>=2.0.44
+pydantic>=2.12
+pytest
+httpx
